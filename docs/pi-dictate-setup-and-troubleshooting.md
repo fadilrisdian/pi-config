@@ -126,7 +126,10 @@ pactl set-source-mute @DEFAULT_SOURCE@ 0
 pactl set-source-volume @DEFAULT_SOURCE@ 50%
 ```
 
-To make it survive, consider a small autostart script or `pactl` module load. (Not yet configured.)
+This repo's machine also has an autostart entry that does this automatically at every session start:
+
+- `~/.local/bin/fix-mic.sh` — waits for PipeWire, then unmutes and sets 50%
+- `~/.config/autostart/fix-mic.desktop` — runs the script on login
 
 ---
 
