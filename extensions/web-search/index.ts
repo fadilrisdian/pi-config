@@ -26,57 +26,57 @@ interface BuiltSearchQuery {
 	site?: string;
 }
 
-async function googleSearch(
+async function serpSearch(
 	query: string,
 	count: number,
 	apiKey: string,
-	cseId: string,
 	signal?: AbortSignal,
 ): Promise<SearchResult[]> {
 	const num = Math.min(count, 10);
-	const url = new URL("https://www.googleapis.com/customsearch/v1");
-	url.searchParams.set("key", apiKey);
-	url.searchParams.set("cx", cseId);
+	const url = new URL("https://serpapi.com/search.json");
+	url.searchParams.set("engine", "google");
 	url.searchParams.set("q", query);
+	url.searchParams.set("api_key", apiKey);
 	url.searchParams.set("num", String(num));
 
 	const resp = await fetch(url.toString(), { signal });
-	if (!resp.ok) {
-		const body = await resp.text();
-		throw new Error(`Google API ${resp.status}: ${body.slice(0, 200)}`);
-	}
-
-	const data = (await resp.json()) as {
-		items?: Array<{
-			title: string;
-			link: string;
+	const data = (await resp.json().catch(() => null)) as {
+		organic_results?: Array<{
+			title?: string;
+			link?: string;
 			snippet?: string;
 		}>;
-	};
+		error?: string;
+	} | null;
 
-	if (!data.items || data.items.length === 0) return [];
+	if (!resp.ok) {
+		const msg = data?.error ?? resp.statusText;
+		throw new Error(`SerpAPI ${resp.status}: ${msg}`);
+	}
 
-	return data.items.map((item) => ({
-		title: item.title,
-		url: item.link,
-		snippet: item.snippet?.replace(/\n/g, " ") ?? "",
-	}));
+	const results =
+		data?.organic_results?.map((item) => ({
+			title: item.title ?? "",
+			url: item.link ?? "",
+			snippet: item.snippet?.replace(/\n/g, " ") ?? "",
+		})) ?? [];
+
+	return results.filter((r) => r.url);
 }
 
 const EXT_DIR = path.dirname(new URL(import.meta.url).pathname);
 const AUTH_PATH = path.join(EXT_DIR, "auth.json");
 
-function loadCredentials(): { apiKey: string; cseId: string } | null {
-	const envApiKey = process.env.GOOGLE_SEARCH_API_KEY ?? process.env.GOOGLE_API_KEY;
-	const envCseId = process.env.GOOGLE_CSE_ID ?? process.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID;
-	if (envApiKey && envCseId) return { apiKey: envApiKey, cseId: envCseId };
+function loadCredentials(): { apiKey: string } | null {
+	const envApiKey =
+		process.env.SERPAPI_API_KEY ?? process.env.SERP_API_KEY;
+	if (envApiKey) return { apiKey: envApiKey };
 
 	if (!fs.existsSync(AUTH_PATH)) return null;
 	try {
 		const config = JSON.parse(fs.readFileSync(AUTH_PATH, "utf-8"));
-		const apiKey = config.google_search_api_key as string;
-		const cseId = config.google_cse_id as string;
-		if (apiKey && cseId) return { apiKey, cseId };
+		const apiKey = config.serpapi_api_key as string;
+		if (apiKey) return { apiKey };
 	} catch {}
 	return null;
 }
@@ -166,7 +166,7 @@ export default function (pi: ExtensionAPI) {
 		name: "web_search",
 		label: "Web Search",
 		description:
-			"Search the web via Google Custom Search API. Build one search per call from a base query string, exact phrases, exclusions, and an optional site. Returns title, URL, and snippet.",
+			"Search the web via SerpAPI (Google Search). Build one search per call from a base query string, exact phrases, exclusions, and an optional site. Returns title, URL, and snippet.",
 		promptSnippet:
 			"Search the web via a query string plus optional exactPhrases, excludeTerms, and site. Use one tool call per search angle.",
 		promptGuidelines: [
@@ -212,17 +212,16 @@ export default function (pi: ExtensionAPI) {
 			const creds = loadCredentials();
 			if (!creds) {
 				throw new Error(
-					`Missing Google Custom Search credentials. Set GOOGLE_SEARCH_API_KEY and GOOGLE_CSE_ID, or create ${AUTH_PATH} from auth.example.json. Get credentials from https://developers.google.com/custom-search/v1/introduction`,
+					`Missing SerpAPI credentials. Set SERPAPI_API_KEY, or create ${AUTH_PATH} from auth.example.json. Get a key from https://serpapi.com/`,
 				);
 			}
 
 			const count = params.count ?? 5;
 			const built = buildSearchQuery(params);
-			const results = await googleSearch(
+			const results = await serpSearch(
 				built.query,
 				count,
 				creds.apiKey,
-				creds.cseId,
 				signal,
 			);
 
