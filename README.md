@@ -17,6 +17,10 @@ Some extensions are big enough to live in their own repositories:
 
 This repo contains everything else.
 
+## Docs
+
+- [`docs/pi-dictate-setup-and-troubleshooting.md`](docs/pi-dictate-setup-and-troubleshooting.md) — full walkthrough of installing pi-dictate and fixing "listens but produces nothing" (login-shell env var, stale tmux shell, muted mic, clipping gain).
+
 ## Copy an extension
 
 Single-file extension:
