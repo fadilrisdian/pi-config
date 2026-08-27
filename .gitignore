@@ -30,3 +30,6 @@ __pycache__/
 Thumbs.db
 tmp/
 *.log
+
+# Local per-extension config
+/extensions/interactive-subagents/config.json

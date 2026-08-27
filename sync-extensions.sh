@@ -23,6 +23,7 @@ mkdir -p "$REPO"
 
 rsync -a \
   --exclude 'node_modules/' \
+  --exclude '.git/' \
   --exclude 'auth.json' \
   --exclude 'browser/.profile/' \
   "$LIVE/" "$REPO/"
