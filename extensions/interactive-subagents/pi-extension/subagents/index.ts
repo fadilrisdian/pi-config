@@ -820,12 +820,13 @@ function renderSubagentWidgetLines(agents: RunningSubagent[], width: number): st
 
   const lines: string[] = [borderTop(title, info, width)];
 
-  for (const agent of agents) {
+  for (const [i, agent] of agents.entries()) {
     const elapsed = formatElapsedMMSS(agent.startTime);
     const agentTag = agent.agent ? ` (${agent.agent})` : "";
     const snapshot = classifyStatus(agent.statusState, Date.now());
     const icon = widgetIcon(snapshot.kind);
-    const left = ` ${icon} ${elapsed}  ${agent.name}${agentTag} `;
+    const isVisible = !multiPaneMode && i === currentSlotIndex && count > 1;
+    const left = ` ${icon} ${elapsed}  ${agent.name}${agentTag}${isVisible ? ` ${ACCENT}◀${RST}` : ""} `;
     const right = statusConfig.enabled
       ? formatWidgetRightLabel(snapshot)
       : agent.cli === "claude"
