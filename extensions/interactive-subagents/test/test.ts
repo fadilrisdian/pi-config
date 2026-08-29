@@ -2676,3 +2676,103 @@ describe("tmux.ts", () => {
     });
   });
 });
+
+describe("single-slot pane mode", () => {
+  function makeRunning(id: string): any {
+    return {
+      id, name: id, task: "", agent: "scout", surface: `%${id}`,
+      startTime: Date.now(), sessionFile: "/tmp/fake.jsonl",
+      interactive: false,
+      statusState: {} as any,
+    };
+  }
+
+  beforeEach(() => {
+    subagentsModule.__test__.runningSubagents.clear();
+    subagentsModule.__test__.multiPaneMode = false;
+    subagentsModule.__test__.currentSlotIndex = 0;
+  });
+
+  describe("cycleSlot", () => {
+    it("does nothing when no subagents are running", () => {
+      subagentsModule.__test__.cycleSlot(1);
+      assert.equal(subagentsModule.__test__.currentSlotIndex, 0);
+    });
+
+    it("wraps forward past the last agent", () => {
+      subagentsModule.__test__.runningSubagents.set("a", makeRunning("a"));
+      subagentsModule.__test__.runningSubagents.set("b", makeRunning("b"));
+      subagentsModule.__test__.runningSubagents.set("c", makeRunning("c"));
+      subagentsModule.__test__.currentSlotIndex = 2;
+      subagentsModule.__test__.cycleSlot(1);
+      assert.equal(subagentsModule.__test__.currentSlotIndex, 0);
+    });
+
+    it("wraps backward before the first agent", () => {
+      subagentsModule.__test__.runningSubagents.set("a", makeRunning("a"));
+      subagentsModule.__test__.runningSubagents.set("b", makeRunning("b"));
+      subagentsModule.__test__.currentSlotIndex = 0;
+      subagentsModule.__test__.cycleSlot(-1);
+      assert.equal(subagentsModule.__test__.currentSlotIndex, 1);
+    });
+
+    it("advances by 1", () => {
+      subagentsModule.__test__.runningSubagents.set("a", makeRunning("a"));
+      subagentsModule.__test__.runningSubagents.set("b", makeRunning("b"));
+      subagentsModule.__test__.runningSubagents.set("c", makeRunning("c"));
+      subagentsModule.__test__.currentSlotIndex = 0;
+      subagentsModule.__test__.cycleSlot(1);
+      assert.equal(subagentsModule.__test__.currentSlotIndex, 1);
+    });
+
+    it("does nothing in multi-pane mode", () => {
+      subagentsModule.__test__.runningSubagents.set("a", makeRunning("a"));
+      subagentsModule.__test__.runningSubagents.set("b", makeRunning("b"));
+      subagentsModule.__test__.multiPaneMode = true;
+      subagentsModule.__test__.currentSlotIndex = 0;
+      subagentsModule.__test__.cycleSlot(1);
+      assert.equal(subagentsModule.__test__.currentSlotIndex, 0);
+    });
+  });
+
+  describe("toggleMultiPane", () => {
+    it("toggles multiPaneMode on and off", () => {
+      assert.equal(subagentsModule.__test__.multiPaneMode, false);
+      subagentsModule.__test__.toggleMultiPane();
+      assert.equal(subagentsModule.__test__.multiPaneMode, true);
+      subagentsModule.__test__.toggleMultiPane();
+      assert.equal(subagentsModule.__test__.multiPaneMode, false);
+    });
+
+    it("resets slot index to 0 when returning to single-slot", () => {
+      subagentsModule.__test__.runningSubagents.set("a", makeRunning("a"));
+      subagentsModule.__test__.runningSubagents.set("b", makeRunning("b"));
+      subagentsModule.__test__.currentSlotIndex = 1;
+      subagentsModule.__test__.multiPaneMode = true;
+      subagentsModule.__test__.toggleMultiPane();
+      assert.equal(subagentsModule.__test__.currentSlotIndex, 0);
+    });
+  });
+
+  describe("widget header in single-slot mode", () => {
+    it("shows slot position when multiple agents running", () => {
+      const agents = [makeRunning("a"), makeRunning("b"), makeRunning("c")];
+      subagentsModule.__test__.runningSubagents.set("a", agents[0]);
+      subagentsModule.__test__.runningSubagents.set("b", agents[1]);
+      subagentsModule.__test__.runningSubagents.set("c", agents[2]);
+      subagentsModule.__test__.multiPaneMode = false;
+      subagentsModule.__test__.currentSlotIndex = 1;
+      const lines = subagentsModule.__test__.renderSubagentWidgetLines(agents, 60);
+      assert.ok(lines[0].includes("2/3"), `expected "2/3" in: ${lines[0]}`);
+    });
+
+    it("shows pane count in multi-pane mode", () => {
+      const agents = [makeRunning("a"), makeRunning("b")];
+      subagentsModule.__test__.runningSubagents.set("a", agents[0]);
+      subagentsModule.__test__.runningSubagents.set("b", agents[1]);
+      subagentsModule.__test__.multiPaneMode = true;
+      const lines = subagentsModule.__test__.renderSubagentWidgetLines(agents, 60);
+      assert.ok(lines[0].includes("2 panes"), `expected "2 panes" in: ${lines[0]}`);
+    });
+  });
+});

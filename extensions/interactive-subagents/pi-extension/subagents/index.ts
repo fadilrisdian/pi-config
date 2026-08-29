@@ -1241,6 +1241,15 @@ export const __test__ = {
   contextWindowFor,
   formatUsageSegments,
   widgetIcon,
+  // single-slot mode
+  cycleSlot,
+  toggleMultiPane,
+  slotOrder,
+  applySlotLayout,
+  get multiPaneMode() { return multiPaneMode; },
+  set multiPaneMode(v: boolean) { multiPaneMode = v; },
+  get currentSlotIndex() { return currentSlotIndex; },
+  set currentSlotIndex(v: number) { currentSlotIndex = v; },
 };
 
 function startWidgetRefresh() {
