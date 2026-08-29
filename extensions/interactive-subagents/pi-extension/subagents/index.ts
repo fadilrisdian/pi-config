@@ -24,6 +24,10 @@ import {
   closeSurface,
   shellEscape,
   readScreen,
+  setSkipRebalance,
+  triggerRebalance,
+  getWindowWidth,
+  resizeSurface,
 } from "./tmux.ts";
 
 import {
@@ -631,6 +635,90 @@ interface RunningSubagent {
 /** All currently running subagents, keyed by id. */
 const runningSubagents = new Map<string, RunningSubagent>();
 
+// ── Single-slot pane mode ──
+// By default, all subagents share one visible pane slot. The others are
+// collapsed to width 1 (still running, just not visible). Ctrl+Alt+[ / Ctrl+Alt+]
+// cycles which one is full-width. Ctrl+Alt+M toggles multi-pane (classic layout).
+
+/** Whether multi-pane mode is active (shows all panes side-by-side). */
+let multiPaneMode = false;
+/** Index into the ordered running-subagent list of the currently visible slot. */
+let currentSlotIndex = 0;
+
+/**
+ * Return the ordered list of running subagents (insertion order, stable).
+ * Used by slot cycling so the index stays meaningful.
+ */
+function slotOrder(): RunningSubagent[] {
+  return Array.from(runningSubagents.values());
+}
+
+/**
+ * Apply the single-slot layout: resize the slot pane to full window width,
+ * collapse all others to 1 column. No-op when multiPaneMode is active or
+ * when there are fewer than 2 subagents (nothing to collapse).
+ */
+function applySlotLayout(): void {
+  if (multiPaneMode) return;
+  const agents = slotOrder();
+  if (agents.length < 2) {
+    // One or zero panes — nothing to collapse; let tmux manage normally.
+    setSkipRebalance(false);
+    return;
+  }
+
+  setSkipRebalance(true);
+
+  // Clamp index in case a pane exited.
+  if (currentSlotIndex >= agents.length) currentSlotIndex = agents.length - 1;
+  const visible = agents[currentSlotIndex];
+
+  const windowWidth = getWindowWidth();
+  // Leave ~40 cols for the orchestrator pane (which is TMUX_PANE).
+  // Visible subagent pane gets the bulk; collapsed panes get 1 col each.
+  const collapsedCount = agents.length - 1;
+  const collapsedTotal = collapsedCount; // 1 col each
+  const orchWidth = Math.min(80, Math.floor((windowWidth ?? 160) * 0.4));
+  const visibleWidth = Math.max(10, (windowWidth ?? 160) - orchWidth - collapsedTotal);
+
+  for (const agent of agents) {
+    if (agent.id === visible.id) {
+      resizeSurface(agent.surface, visibleWidth);
+    } else {
+      resizeSurface(agent.surface, 1);
+    }
+  }
+}
+
+/**
+ * Cycle the visible slot by `delta` steps (+1 = next, -1 = prev).
+ * Wraps around. No-op in multi-pane mode.
+ */
+function cycleSlot(delta: number): void {
+  if (multiPaneMode) return;
+  const agents = slotOrder();
+  if (agents.length === 0) return;
+  currentSlotIndex = ((currentSlotIndex + delta) % agents.length + agents.length) % agents.length;
+  applySlotLayout();
+  updateWidget();
+}
+
+/**
+ * Toggle between single-slot and multi-pane (classic even-horizontal) modes.
+ */
+function toggleMultiPane(): void {
+  multiPaneMode = !multiPaneMode;
+  if (multiPaneMode) {
+    setSkipRebalance(false);
+    triggerRebalance();
+  } else {
+    // Re-enter single-slot: reset to first agent.
+    currentSlotIndex = 0;
+    applySlotLayout();
+  }
+  updateWidget();
+}
+
 // When this extension is loaded inside a subagent that itself spawns children
 // (e.g. a worker delegating to scout/researcher), `subagent-done.ts` runs in the
 // same process and needs to know whether this session still has children in
@@ -723,7 +811,12 @@ function borderBottom(width: number): string {
 function renderSubagentWidgetLines(agents: RunningSubagent[], width: number): string[] {
   const count = agents.length;
   const title = "Subagents";
-  const info = `${count} running`;
+  const slotLabel = !multiPaneMode && count > 1
+    ? `${currentSlotIndex + 1}/${count} ◀▶`
+    : multiPaneMode && count > 1
+      ? `${count} panes`
+      : `${count} running`;
+  const info = slotLabel;
 
   const lines: string[] = [borderTop(title, info, width)];
 
@@ -1309,6 +1402,7 @@ async function launchSubagent(
     };
 
     runningSubagents.set(id, running);
+    applySlotLayout();
     return running;
   }
 
@@ -1450,6 +1544,7 @@ async function launchSubagent(
   };
 
   runningSubagents.set(id, running);
+  applySlotLayout();
   return running;
 }
 
@@ -1572,6 +1667,9 @@ async function watchSubagent(
 
       closeSurface(surface);
       runningSubagents.delete(running.id);
+      // Clamp slot index after removal so it stays in-bounds.
+      if (currentSlotIndex >= runningSubagents.size && currentSlotIndex > 0) currentSlotIndex--;
+      applySlotLayout();
 
       return { name, task, summary, exitCode: result.exitCode, elapsed, ...(sessionId ? { claudeSessionId: sessionId } : {}) };
     }
@@ -1600,6 +1698,8 @@ async function watchSubagent(
 
     closeSurface(surface);
     runningSubagents.delete(running.id);
+    if (currentSlotIndex >= runningSubagents.size && currentSlotIndex > 0) currentSlotIndex--;
+    applySlotLayout();
 
     return {
       name,
@@ -1617,6 +1717,8 @@ async function watchSubagent(
       closeSurface(surface);
     } catch {}
     runningSubagents.delete(running.id);
+    if (currentSlotIndex >= runningSubagents.size && currentSlotIndex > 0) currentSlotIndex--;
+    applySlotLayout();
 
     if (signal.aborted) {
       return {
@@ -1673,6 +1775,29 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       agent.abortController?.abort();
     }
     runningSubagents.clear();
+    // Reset slot state on shutdown so the next session starts clean.
+    multiPaneMode = false;
+    currentSlotIndex = 0;
+    setSkipRebalance(false);
+  });
+
+  // ── Pane-slot keyboard shortcuts ──
+  // Ctrl+Alt+[ — cycle to previous subagent pane
+  pi.registerShortcut("ctrl+alt+[", {
+    description: "Show previous subagent pane (single-slot mode)",
+    handler: () => { cycleSlot(-1); },
+  });
+
+  // Ctrl+Alt+] — cycle to next subagent pane
+  pi.registerShortcut("ctrl+alt+]", {
+    description: "Show next subagent pane (single-slot mode)",
+    handler: () => { cycleSlot(1); },
+  });
+
+  // Ctrl+Alt+M — toggle single-slot / multi-pane mode
+  pi.registerShortcut("ctrl+alt+m", {
+    description: "Toggle single-slot / multi-pane subagent layout",
+    handler: () => { toggleMultiPane(); },
   });
 
   // The spawning tools are always registered here. Whether a child process can
@@ -2251,6 +2376,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           }),
         };
         runningSubagents.set(id, running);
+        applySlotLayout();
         startWidgetRefresh();
         startStatusRefresh(pi);
 

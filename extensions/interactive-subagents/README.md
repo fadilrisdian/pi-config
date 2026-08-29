@@ -9,15 +9,28 @@ Async subagents for [pi](https://github.com/badlogic/pi-mono), running in tmux p
 `subagent()` returns immediately. The sub-agent runs in its own tmux pane — a right split off the parent pi pane, so pane creation never steals keyboard focus. A live widget above the input tracks every running sub-agent, and when one finishes, its result is steered into the main session as a notification that triggers a new turn.
 
 ```
-╭─ Subagents ──────────────────────────── 2 running ─╮
-│ 00:23  scout      active · bash 7m                 │
-│ 00:45  scout-2    waiting 2m                       │
-╰────────────────────────────────────────────────────╯
+╭─ Subagents ──────────────────────────── 1/3 ◀▶ ─╮
+│ ⟳ 00:23  scout      active · bash 7m             │
+│ ○ 00:45  scout-2    waiting 2m                   │
+│ ○ 01:02  worker     active · provider            │
+╰───────────────────────────────────────────────────╯
 ```
 
 Spawn several in parallel — they run concurrently and steer results back independently as each finishes.
 
-Panes are kept evenly sized: the extension re-applies an `even-horizontal` layout after every spawn and exit (debounced). The layout is a single constant, `SUBAGENT_TMUX_LAYOUT` in `pi-extension/subagents/tmux.ts` — change it to any named tmux layout (`main-vertical`, `tiled`, …).
+### Single-slot mode (default)
+
+By default only **one subagent pane is visible at a time**. The others are still running — they are just collapsed to 1 column so they don't crowd the screen. Cycle through them with keyboard shortcuts:
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+Alt+[` | Previous subagent pane |
+| `Ctrl+Alt+]` | Next subagent pane |
+| `Ctrl+Alt+M` | Toggle single-slot / multi-pane layout |
+
+The widget header shows the current slot position (`1/3 ◀▶`) in single-slot mode, and `N panes` when multi-pane is active.
+
+**Multi-pane mode** (toggled with `Ctrl+Alt+M`) restores the classic `even-horizontal` layout where all panes share equal width.
 
 If your shell startup is slow and launch commands get dropped before the prompt is ready, raise the delay:
 

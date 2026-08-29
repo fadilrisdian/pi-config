@@ -20,6 +20,7 @@ This repo contains everything else.
 ## Docs
 
 - [`docs/pi-dictate-setup-and-troubleshooting.md`](docs/pi-dictate-setup-and-troubleshooting.md) — full walkthrough of installing pi-dictate and fixing "listens but produces nothing" (login-shell env var, stale tmux shell, muted mic, clipping gain).
+- [`docs/live-config-vs-repo.md`](docs/live-config-vs-repo.md) — which side is the source of truth (`~/.pi/agent/extensions` vs. this repo's `extensions/`), how `sync-extensions.sh` + the pre-commit hook keep them in sync, and what's excluded from the backup.
 
 ## Copy an extension
 

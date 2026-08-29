@@ -77,16 +77,21 @@ export function shellEscape(s: string): string {
 const SUBAGENT_TMUX_LAYOUT = "even-horizontal";
 
 let rebalanceTimer: ReturnType<typeof setTimeout> | null = null;
+/** When true, rebalanceSurfaces is a no-op (single-slot mode manages widths itself). */
+let skipRebalance = false;
+
+export function setSkipRebalance(skip: boolean): void {
+  skipRebalance = skip;
+}
 
 /**
  * Re-balance subagent panes so repeated splits don't leave them lopsided.
- * tmux halves the target pane on every split and dumps freed space onto a
- * neighbor on close, so without this panes drift to wildly uneven widths.
  * Applies SUBAGENT_TMUX_LAYOUT to the parent pi window. Debounced so a burst
- * of parallel spawns or staggered exits collapses into a single layout call,
- * and non-fatal: a cosmetic resize must never break spawning or watching.
+ * of parallel spawns or staggered exits collapses into a single layout call.
+ * No-op when skipRebalance is true (single-slot mode handles widths itself).
  */
 function rebalanceSurfaces(hintPane?: string): void {
+  if (skipRebalance) return;
   // Prefer the parent pi pane (stable; survives a closing subagent pane).
   const target = process.env.TMUX_PANE ?? hintPane;
   if (!target) return;
@@ -102,6 +107,68 @@ function rebalanceSurfaces(hintPane?: string): void {
       // Pane/window may be gone; balancing is best-effort.
     }
   }, 120);
+}
+
+/** Force a rebalance regardless of skipRebalance — used when exiting single-slot mode. */
+export function triggerRebalance(): void {
+  const prev = skipRebalance;
+  skipRebalance = false;
+  rebalanceSurfaces();
+  skipRebalance = prev;
+}
+
+/**
+ * Get the usable width of the tmux window (columns), or null if unavailable.
+ * Used to set the visible pane to full window width in single-slot mode.
+ */
+export function getWindowWidth(): number | null {
+  try {
+    const target = process.env.TMUX_PANE;
+    if (!target) return null;
+    const out = execFileSync(
+      "tmux",
+      ["display-message", "-p", "-t", target, "#{window_width}"],
+      { encoding: "utf8" },
+    ).trim();
+    const n = parseInt(out, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resize a pane to a specific width (columns). Best-effort — a closed or
+ * non-existent pane is silently ignored.
+ */
+export function resizeSurface(surface: string, width: number): void {
+  try {
+    execFileSync("tmux", ["resize-pane", "-t", surface, "-x", String(Math.max(1, width))], {
+      encoding: "utf8",
+    });
+  } catch {
+    // Pane may be gone; resize is best-effort.
+  }
+}
+
+/**
+ * Focus a tmux pane without stealing keyboard input from the parent session.
+ * Used in single-slot mode so the selected subagent pane is in view but focus
+ * stays with the orchestrator's pane.
+ */
+export function selectSurface(surface: string): void {
+  try {
+    // -t selects the pane (makes it "current") without switching keyboard focus
+    // away from whatever pane the user is typing in.
+    execFileSync("tmux", ["select-pane", "-t", surface], { encoding: "utf8" });
+    // Immediately re-focus the parent pi pane so keystrokes still go there.
+    const parent = process.env.TMUX_PANE;
+    if (parent) {
+      execFileSync("tmux", ["select-pane", "-t", parent], { encoding: "utf8" });
+    }
+  } catch {
+    // Best-effort.
+  }
 }
 
 // ── Surface primitives ──
