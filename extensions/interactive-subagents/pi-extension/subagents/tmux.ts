@@ -98,6 +98,7 @@ function rebalanceSurfaces(hintPane?: string): void {
   if (rebalanceTimer) clearTimeout(rebalanceTimer);
   rebalanceTimer = setTimeout(() => {
     rebalanceTimer = null;
+    if (skipRebalance) return; // single-slot mode took over after we queued
     try {
       // -t <pane> resolves to that pane's window; does not change focus.
       execFileSync("tmux", ["select-layout", "-t", target, SUBAGENT_TMUX_LAYOUT], {
