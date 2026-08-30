@@ -1792,14 +1792,14 @@ export default function subagentsExtension(pi: ExtensionAPI) {
   });
 
   // ── Pane-slot keyboard shortcuts ──
-  // Ctrl+Alt+[ — cycle to previous subagent pane
-  pi.registerShortcut("ctrl+alt+[", {
+  // Ctrl+Alt+, — cycle to previous subagent pane
+  pi.registerShortcut("ctrl+alt+,", {
     description: "Show previous subagent pane (single-slot mode)",
     handler: () => { cycleSlot(-1); },
   });
 
-  // Ctrl+Alt+] — cycle to next subagent pane
-  pi.registerShortcut("ctrl+alt+]", {
+  // Ctrl+Alt+. — cycle to next subagent pane
+  pi.registerShortcut("ctrl+alt+.", {
     description: "Show next subagent pane (single-slot mode)",
     handler: () => { cycleSlot(1); },
   });
