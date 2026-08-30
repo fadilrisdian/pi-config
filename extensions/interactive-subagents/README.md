@@ -24,8 +24,8 @@ By default only **one subagent pane is visible at a time**. The others are still
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl+Alt+[` | Previous subagent pane |
-| `Ctrl+Alt+]` | Next subagent pane |
+| `Ctrl+Alt+,` | Previous subagent pane |
+| `Ctrl+Alt+.` | Next subagent pane |
 | `Ctrl+Alt+M` | Toggle single-slot / multi-pane layout |
 
 The widget header shows the current slot position (`1/3 ◀▶`) in single-slot mode, and `N panes` when multi-pane is active.
